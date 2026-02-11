@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import BottomNav from '@/app/components/BottomNav'
 
 interface Account {
   id: bigint
@@ -337,32 +338,7 @@ export default function WalletPage() {
         ></div>
       )}
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex justify-around">
-            <Link href="/dashboard" className="flex flex-col items-center gap-1 text-gray-600 hover:text-indigo-600">
-              <span className="text-2xl">🏠</span>
-              <span className="text-xs font-medium">Home</span>
-            </Link>
-            
-            <button className="flex flex-col items-center gap-1 text-indigo-600">
-              <span className="text-2xl">💰</span>
-              <span className="text-xs font-medium">Wallet</span>
-            </button>
-            
-            <Link href="/transactions" className="flex flex-col items-center gap-1 text-gray-600 hover:text-indigo-600">
-              <span className="text-2xl">📝</span>
-              <span className="text-xs font-medium">Transactions</span>
-            </Link>
-            
-            <Link href="/calendar" className="flex flex-col items-center gap-1 text-gray-600 hover:text-indigo-600">
-              <span className="text-2xl">📅</span>
-              <span className="text-xs font-medium">Calendar</span>
-            </Link>
-          </div>
-        </div>
-      </div>
+      <BottomNav />
     </div>
   )
 }
