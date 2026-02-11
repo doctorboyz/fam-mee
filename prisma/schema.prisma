@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model accounts {
+  id                                                  BigInt         @id @default(autoincrement())
+  family_id                                           BigInt
+  owner_user_id                                       BigInt?
+  name                                                String         @db.VarChar(100)
+  type                                                String         @db.VarChar(20)
+  asset_id                                            BigInt
+  initial_balance                                     Decimal?       @default(0) @db.Decimal(15, 2)
+  current_balance                                     Decimal?       @default(0) @db.Decimal(15, 2)
+  last_reconciled_at                                  DateTime?      @db.Timestamptz(6)
+  last_reconciled_balance                             Decimal?       @db.Decimal(15, 2)
+  visibility                                          String?        @default("FAMILY") @db.VarChar(20)
+  visible_to_user_ids                                 Json?
+  is_active                                           Boolean?       @default(true)
+  icon                                                String?        @db.VarChar(50)
+  color                                               String?        @db.VarChar(20)
+  created_at                                          DateTime?      @db.Timestamptz(6)
+  updated_at                                          DateTime?      @db.Timestamptz(6)
+  deleted_at                                          DateTime?      @db.Timestamptz(6)
+  assets                                              assets         @relation(fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_assets_accounts")
+  families                                            families       @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_families_accounts")
+  users                                               users?         @relation(fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_accounts")
+  transactions_transactions_from_account_idToaccounts transactions[] @relation("transactions_from_account_idToaccounts")
+  transactions_transactions_to_account_idToaccounts   transactions[] @relation("transactions_to_account_idToaccounts")
+
+  @@index([asset_id], map: "idx_accounts_asset_id")
+  @@index([deleted_at], map: "idx_accounts_deleted_at")
+  @@index([family_id], map: "idx_accounts_family_id")
+  @@index([owner_user_id], map: "idx_accounts_owner_user_id")
+  @@index([type], map: "idx_accounts_type")
+}
+
+model asset_types {
+  id              BigInt    @id @default(autoincrement())
+  family_id       BigInt?
+  code            String    @unique(map: "idx_asset_type_code_family") @db.VarChar(20)
+  name            String    @db.VarChar(100)
+  name_th         String?   @db.VarChar(100)
+  description     String?
+  icon            String?   @db.VarChar(50)
+  color           String?   @db.VarChar(20)
+  default_decimal BigInt?   @default(2)
+  sort_order      BigInt?   @default(0)
+  is_active       Boolean?  @default(true)
+  tax_config      Json?
+  fee_config      Json?
+  created_at      DateTime? @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+  deleted_at      DateTime? @db.Timestamptz(6)
+  families        families? @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_asset_types_family")
+  assets          assets[]
+
+  @@index([deleted_at], map: "idx_asset_types_deleted_at")
+  @@index([family_id], map: "idx_asset_types_family_id")
+}
+
+model assets {
+  id                                                BigInt             @id @default(autoincrement())
+  asset_type_id                                     BigInt
+  code                                              String             @unique(map: "idx_assets_code") @db.VarChar(20)
+  name                                              String             @db.VarChar(100)
+  symbol                                            String?            @db.VarChar(10)
+  decimal_places                                    BigInt?            @default(2)
+  is_active                                         Boolean?           @default(true)
+  created_at                                        DateTime?          @db.Timestamptz(6)
+  updated_at                                        DateTime?          @db.Timestamptz(6)
+  deleted_at                                        DateTime?          @db.Timestamptz(6)
+  accounts                                          accounts[]
+  asset_types                                       asset_types        @relation(fields: [asset_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_asset_types_assets")
+  transaction_fees                                  transaction_fees[]
+  transactions_transactions_asset_idToassets        transactions[]     @relation("transactions_asset_idToassets")
+  transactions_transactions_paired_asset_idToassets transactions[]     @relation("transactions_paired_asset_idToassets")
+
+  @@index([asset_type_id], map: "idx_assets_asset_type_id")
+  @@index([deleted_at], map: "idx_assets_deleted_at")
+}
+
+model categories {
+  id               BigInt         @id @default(autoincrement())
+  family_id        BigInt?
+  parent_id        BigInt?
+  name             String         @db.VarChar(100)
+  name_th          String?        @db.VarChar(100)
+  type             String         @db.VarChar(20)
+  icon             String?        @db.VarChar(50)
+  color            String?        @db.VarChar(20)
+  jar_type         String?        @db.VarChar(10)
+  is_active        Boolean?       @default(true)
+  sort_order       BigInt?        @default(0)
+  created_at       DateTime?      @db.Timestamptz(6)
+  updated_at       DateTime?      @db.Timestamptz(6)
+  deleted_at       DateTime?      @db.Timestamptz(6)
+  categories       categories?    @relation("categoriesTocategories", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_sub_categories")
+  other_categories categories[]   @relation("categoriesTocategories")
+  families         families?      @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_families_categories")
+  transactions     transactions[]
+
+  @@index([deleted_at], map: "idx_categories_deleted_at")
+  @@index([family_id], map: "idx_categories_family_id")
+  @@index([jar_type], map: "idx_categories_jar_type")
+  @@index([parent_id], map: "idx_categories_parent_id")
+  @@index([type], map: "idx_categories_type")
+}
+
+model events {
+  id                                      BigInt         @id @default(autoincrement())
+  family_id                               BigInt
+  type                                    String         @db.VarChar(20)
+  title                                   String         @db.VarChar(200)
+  description                             String?
+  start_date                              DateTime?      @db.Timestamptz(6)
+  end_date                                DateTime?      @db.Timestamptz(6)
+  all_day                                 Boolean?       @default(false)
+  location                                String?        @db.VarChar(200)
+  assigned_to_user_id                     BigInt?
+  assigned_by_user_id                     BigInt?
+  reward_points                           Decimal?       @db.Decimal(10, 2)
+  task_status                             String?        @db.VarChar(20)
+  recurrence_rule                         String?        @db.VarChar(200)
+  streak_count                            BigInt?        @default(0)
+  budget_amount                           Decimal?       @db.Decimal(15, 2)
+  visibility                              String?        @default("FAMILY") @db.VarChar(20)
+  visible_to_user_ids                     Json?
+  collaborator_user_ids                   Json?
+  created_by_user_id                      BigInt
+  created_at                              DateTime?      @db.Timestamptz(6)
+  updated_at                              DateTime?      @db.Timestamptz(6)
+  deleted_at                              DateTime?      @db.Timestamptz(6)
+  users_events_assigned_by_user_idTousers users?         @relation("events_assigned_by_user_idTousers", fields: [assigned_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_events_assigned_by")
+  users_events_assigned_to_user_idTousers users?         @relation("events_assigned_to_user_idTousers", fields: [assigned_to_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_events_assigned_to")
+  users_events_created_by_user_idTousers  users          @relation("events_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_events_created_by")
+  families                                families       @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_events_family")
+  transactions                            transactions[]
+
+  @@index([assigned_by_user_id], map: "idx_events_assigned_by_user_id")
+  @@index([assigned_to_user_id], map: "idx_events_assigned_to_user_id")
+  @@index([created_by_user_id], map: "idx_events_created_by_user_id")
+  @@index([deleted_at], map: "idx_events_deleted_at")
+  @@index([family_id], map: "idx_events_family_id")
+  @@index([task_status], map: "idx_events_task_status")
+  @@index([type], map: "idx_events_type")
+}
+
+model families {
+  id           BigInt         @id @default(autoincrement())
+  name         String         @db.VarChar(100)
+  invite_code  String?        @unique(map: "idx_families_invite_code") @db.VarChar(20)
+  settings     Json?
+  created_at   DateTime?      @db.Timestamptz(6)
+  updated_at   DateTime?      @db.Timestamptz(6)
+  deleted_at   DateTime?      @db.Timestamptz(6)
+  accounts     accounts[]
+  asset_types  asset_types[]
+  categories   categories[]
+  events       events[]
+  media        media[]
+  projects     projects[]
+  transactions transactions[]
+  users        users[]
+
+  @@index([deleted_at], map: "idx_families_deleted_at")
+}
+
+model media {
+  id                  BigInt    @id @default(autoincrement())
+  owner_type          String    @db.VarChar(50)
+  owner_id            BigInt
+  family_id           BigInt
+  file_name           String    @db.VarChar(255)
+  file_path           String    @db.VarChar(500)
+  file_type           String?   @db.VarChar(50)
+  file_size           BigInt?
+  uploaded_by_user_id BigInt
+  created_at          DateTime? @db.Timestamptz(6)
+  updated_at          DateTime? @db.Timestamptz(6)
+  deleted_at          DateTime? @db.Timestamptz(6)
+  families            families  @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_media_family")
+  users               users     @relation(fields: [uploaded_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_media_uploaded_by")
+
+  @@index([deleted_at], map: "idx_media_deleted_at")
+  @@index([family_id], map: "idx_media_family_id")
+  @@index([uploaded_by_user_id], map: "idx_media_uploaded_by_user_id")
+  @@index([owner_type, owner_id], map: "idx_owner")
+}
+
+model projects {
+  id             BigInt         @id @default(autoincrement())
+  family_id      BigInt
+  parent_id      BigInt?
+  name           String         @db.VarChar(100)
+  description    String?
+  type           String?        @db.VarChar(20)
+  icon           String?        @db.VarChar(50)
+  color          String?        @db.VarChar(20)
+  is_active      Boolean?       @default(true)
+  sort_order     BigInt?        @default(0)
+  created_at     DateTime?      @db.Timestamptz(6)
+  updated_at     DateTime?      @db.Timestamptz(6)
+  deleted_at     DateTime?      @db.Timestamptz(6)
+  families       families       @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_families_projects")
+  projects       projects?      @relation("projectsToprojects", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_projects_sub_projects")
+  other_projects projects[]     @relation("projectsToprojects")
+  transactions   transactions[]
+
+  @@index([deleted_at], map: "idx_projects_deleted_at")
+  @@index([family_id], map: "idx_projects_family_id")
+  @@index([parent_id], map: "idx_projects_parent_id")
+}
+
+model transaction_fees {
+  id             BigInt       @id @default(autoincrement())
+  transaction_id BigInt
+  fee_type       String       @db.VarChar(50)
+  amount         Decimal      @db.Decimal(15, 2)
+  asset_id       BigInt
+  description    String?      @db.VarChar(200)
+  created_at     DateTime?    @db.Timestamptz(6)
+  updated_at     DateTime?    @db.Timestamptz(6)
+  deleted_at     DateTime?    @db.Timestamptz(6)
+  assets         assets       @relation(fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transaction_fees_asset")
+  transactions   transactions @relation(fields: [transaction_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_fees")
+
+  @@index([asset_id], map: "idx_transaction_fees_asset_id")
+  @@index([deleted_at], map: "idx_transaction_fees_deleted_at")
+  @@index([fee_type], map: "idx_transaction_fees_fee_type")
+  @@index([transaction_id], map: "idx_transaction_fees_transaction_id")
+}
+
+model transactions {
+  id                                              BigInt             @id @default(autoincrement())
+  family_id                                       BigInt
+  event_id                                        BigInt?
+  type                                            String             @db.VarChar(20)
+  category_id                                     BigInt?
+  project_id                                      BigInt?
+  asset_id                                        BigInt
+  paired_asset_id                                 BigInt?
+  exchange_rate                                   Decimal?           @db.Decimal(15, 6)
+  from_account_id                                 BigInt?
+  to_account_id                                   BigInt?
+  planned_amount                                  Decimal?           @db.Decimal(15, 2)
+  actual_amount                                   Decimal?           @db.Decimal(15, 2)
+  status                                          String?            @default("COMPLETED") @db.VarChar(20)
+  transaction_date                                DateTime           @db.Timestamptz(6)
+  description                                     String?            @db.VarChar(500)
+  notes                                           String?
+  created_by_user_id                              BigInt
+  approved_by_user_id                             BigInt?
+  visibility                                      String?            @default("FAMILY") @db.VarChar(20)
+  visible_to_user_ids                             Json?
+  created_at                                      DateTime?          @db.Timestamptz(6)
+  updated_at                                      DateTime?          @db.Timestamptz(6)
+  deleted_at                                      DateTime?          @db.Timestamptz(6)
+  transaction_fees                                transaction_fees[]
+  categories                                      categories?        @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_transactions")
+  events                                          events?            @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_events_transactions")
+  projects                                        projects?          @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_projects_transactions")
+  users_transactions_approved_by_user_idTousers   users?             @relation("transactions_approved_by_user_idTousers", fields: [approved_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_approved_by")
+  assets_transactions_asset_idToassets            assets             @relation("transactions_asset_idToassets", fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_asset")
+  users_transactions_created_by_user_idTousers    users              @relation("transactions_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_created_by")
+  families                                        families           @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_family")
+  accounts_transactions_from_account_idToaccounts accounts?          @relation("transactions_from_account_idToaccounts", fields: [from_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_from_account")
+  assets_transactions_paired_asset_idToassets     assets?            @relation("transactions_paired_asset_idToassets", fields: [paired_asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_paired_asset")
+  accounts_transactions_to_account_idToaccounts   accounts?          @relation("transactions_to_account_idToaccounts", fields: [to_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_transactions_to_account")
+
+  @@index([approved_by_user_id], map: "idx_transactions_approved_by_user_id")
+  @@index([asset_id], map: "idx_transactions_asset_id")
+  @@index([category_id], map: "idx_transactions_category_id")
+  @@index([created_by_user_id], map: "idx_transactions_created_by_user_id")
+  @@index([deleted_at], map: "idx_transactions_deleted_at")
+  @@index([event_id], map: "idx_transactions_event_id")
+  @@index([family_id], map: "idx_transactions_family_id")
+  @@index([from_account_id], map: "idx_transactions_from_account_id")
+  @@index([paired_asset_id], map: "idx_transactions_paired_asset_id")
+  @@index([project_id], map: "idx_transactions_project_id")
+  @@index([status], map: "idx_transactions_status")
+  @@index([to_account_id], map: "idx_transactions_to_account_id")
+  @@index([transaction_date], map: "idx_transactions_transaction_date")
+  @@index([type], map: "idx_transactions_type")
+}
+
+model users {
+  id                                                   BigInt         @id @default(autoincrement())
+  parent_user_id                                       BigInt?
+  family_id                                            BigInt
+  email                                                String?        @unique(map: "idx_users_email") @db.VarChar(255)
+  password_hash                                        String?        @db.VarChar(255)
+  pin                                                  String?        @db.VarChar(255)
+  name                                                 String         @db.VarChar(100)
+  role                                                 String?        @default("MEMBER") @db.VarChar(20)
+  age_group                                            String?        @db.VarChar(20)
+  avatar_url                                           String?        @db.VarChar(500)
+  status                                               String?        @default("ACTIVE") @db.VarChar(20)
+  created_at                                           DateTime?      @db.Timestamptz(6)
+  updated_at                                           DateTime?      @db.Timestamptz(6)
+  deleted_at                                           DateTime?      @db.Timestamptz(6)
+  username                                             String?        @unique @db.VarChar(50)
+  accounts                                             accounts[]
+  events_events_assigned_by_user_idTousers             events[]       @relation("events_assigned_by_user_idTousers")
+  events_events_assigned_to_user_idTousers             events[]       @relation("events_assigned_to_user_idTousers")
+  events_events_created_by_user_idTousers              events[]       @relation("events_created_by_user_idTousers")
+  media                                                media[]
+  transactions_transactions_approved_by_user_idTousers transactions[] @relation("transactions_approved_by_user_idTousers")
+  transactions_transactions_created_by_user_idTousers  transactions[] @relation("transactions_created_by_user_idTousers")
+  families                                             families       @relation(fields: [family_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_families_members")
+  users                                                users?         @relation("usersTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_sub_profiles")
+  other_users                                          users[]        @relation("usersTousers")
+
+  @@index([deleted_at], map: "idx_users_deleted_at")
+  @@index([family_id], map: "idx_users_family_id")
+  @@index([parent_user_id], map: "idx_users_parent_user_id")
+}
