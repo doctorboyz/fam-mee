@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     const categoryId = searchParams.get('category')
     const type = searchParams.get('type')
     const limit = searchParams.get('limit')
+    const accountId = searchParams.get('account_id')
 
     // Build where clause
     interface WhereClause {
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       }
       category_id?: number
       type?: string
+      OR?: Array<{ from_account_id: number } | { to_account_id: number }>
     }
 
     const where: WhereClause = {
@@ -53,6 +55,13 @@ export async function GET(request: Request) {
 
     if (type && (type === 'INCOME' || type === 'EXPENSE')) {
       where.type = type
+    }
+    
+    if (accountId) {
+      where.OR = [
+        { from_account_id: Number(accountId) },
+        { to_account_id: Number(accountId) }
+      ]
     }
 
     const transactions = await prisma.transactions.findMany({

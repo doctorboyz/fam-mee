@@ -75,6 +75,8 @@ export async function POST(request: Request) {
         asset_id: Number(body.asset_id),
         initial_balance: body.balance || 0,
         current_balance: body.balance || 0,
+        icon: body.icon,
+        color: body.color,
       },
     })
 

@@ -8,6 +8,7 @@ export async function GET(
 ) {
   try {
     const session = await auth()
+    const { id } = await params
     
     if (!session?.user?.familyId) {
       return NextResponse.json(
@@ -17,7 +18,6 @@ export async function GET(
     }
 
     const familyId = Number(session.user.familyId)
-    const { id } = await params
     const transactionId = Number(id)
 
     const transaction = await prisma.transactions.findFirst({
@@ -65,6 +65,7 @@ export async function PUT(
 ) {
   try {
     const session = await auth()
+    const { id } = await params
     
     if (!session?.user?.familyId) {
       return NextResponse.json(
@@ -74,7 +75,6 @@ export async function PUT(
     }
 
     const familyId = Number(session.user.familyId)
-    const { id } = await params
     const transactionId = Number(id)
     const body = await request.json()
 
@@ -153,6 +153,7 @@ export async function DELETE(
 ) {
   try {
     const session = await auth()
+    const { id } = await params
     
     if (!session?.user?.familyId) {
       return NextResponse.json(
@@ -162,7 +163,6 @@ export async function DELETE(
     }
 
     const familyId = Number(session.user.familyId)
-    const { id } = await params
     const transactionId = Number(id)
 
     // Check if transaction exists and belongs to family
