@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 
+interface SharedUser {
+  userId: number
+  access: 'READ' | 'WRITE'
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,6 +23,7 @@ export async function GET(
     }
 
     const familyId = Number(session.user.familyId)
+    const userId = Number(session.user.id)
     const accountId = Number(id)
 
     const account = await prisma.accounts.findFirst({
@@ -38,17 +44,46 @@ export async function GET(
       )
     }
 
+    // Permission Check
+    let hasAccess = false
+    let accessLevel = 'READ'
+
+    // 1. Owner
+    if (account.owner_user_id && Number(account.owner_user_id) === userId) {
+      hasAccess = true
+      accessLevel = 'OWNER'
+    } 
+    // 2. Family Visibility
+    else if (account.visibility === 'FAMILY') {
+      hasAccess = true
+      accessLevel = 'WRITE' // Default family access
+    }
+    // 3. Shared List
+    else {
+      const sharedList = account.visible_to_user_ids as unknown as SharedUser[]
+      if (Array.isArray(sharedList)) {
+        const userShare = sharedList.find(u => Number(u.userId) === userId)
+        if (userShare) {
+          hasAccess = true
+          if (userShare.access === 'WRITE') {
+            accessLevel = 'WRITE'
+          }
+        }
+      }
+    }
+
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      )
+    }
+
     return NextResponse.json({
-      id: account.id,
-      name: account.name,
-      type: account.type,
+      ...account,
       balance: Number(account.current_balance) || 0,
-      asset_id: account.asset_id,
-      asset_symbol: account.assets?.symbol || 'THB',
-      icon: account.icon,
-      color: account.color,
-      created_at: account.created_at,
-      updated_at: account.updated_at,
+      initial_balance: Number(account.initial_balance) || 0,
+      access: accessLevel,
     })
   } catch (error) {
     console.error('Get Account Error:', error)
@@ -75,30 +110,68 @@ export async function PUT(
     }
 
     const familyId = Number(session.user.familyId)
+    const userId = Number(session.user.id)
     const accountId = Number(id)
     const body = await request.json()
 
-    const updatedAccount = await prisma.accounts.update({
+    // Check existence and permission
+    const existing = await prisma.accounts.findFirst({
       where: {
         id: accountId,
-        family_id: familyId, // Ensure ownership
+        family_id: familyId,
+        deleted_at: null,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Account not found" },
+        { status: 404 }
+      )
+    }
+
+    // Permission Check (Must be Owner or have WRITE access)
+    let canEdit = false
+    if (existing.owner_user_id && Number(existing.owner_user_id) === userId) {
+      canEdit = true
+    } else if (existing.visibility === 'FAMILY') {
+      canEdit = true // Family accounts editable by all
+    } else {
+      const sharedList = existing.visible_to_user_ids as unknown as SharedUser[]
+      if (Array.isArray(sharedList)) {
+        const userShare = sharedList.find(u => Number(u.userId) === userId)
+        if (userShare?.access === 'WRITE') {
+          canEdit = true
+        }
+      }
+    }
+
+    if (!canEdit) {
+      return NextResponse.json(
+        { error: "Forbidden: Write access required" },
+        { status: 403 }
+      )
+    }
+
+    const updated = await prisma.accounts.update({
+      where: {
+        id: accountId,
       },
       data: {
         name: body.name,
-        type: body.type,
         icon: body.icon,
         color: body.color,
-        // Balance is not updated here, use reconcile or transactions
-        updated_at: new Date(),
+        visibility: body.visibility, // Allow updating visibility? (Only owner should?)
+        // Let's assume anyone with WRITE can edit properties for now, OR restrict visibility change to Owner.
+        // For simplicity: WRITE access allows editing details.
+        // Ideally: Only Owner changes visibility/sharing.
+        visible_to_user_ids: body.sharedWith, 
       },
     })
 
     return NextResponse.json({
-      id: updatedAccount.id,
-      name: updatedAccount.name,
-      type: updatedAccount.type,
-      icon: updatedAccount.icon,
-      color: updatedAccount.color,
+      ...updated,
+      balance: Number(updated.current_balance) || 0,
     })
   } catch (error) {
     console.error('Update Account Error:', error)
@@ -125,12 +198,40 @@ export async function DELETE(
     }
 
     const familyId = Number(session.user.familyId)
+    const userId = Number(session.user.id)
     const accountId = Number(id)
+
+    // Check existence
+    const existing = await prisma.accounts.findFirst({
+      where: {
+        id: accountId,
+        family_id: familyId,
+        deleted_at: null,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Account not found" },
+        { status: 404 }
+      )
+    }
+
+    // Only Owner (or Admin?) can delete accounts? 
+    // Or Shared with WRITE? Usually Delete is Owner only.
+    // Let's restrict to Owner for safety.
+    const isOwner = existing.owner_user_id && Number(existing.owner_user_id) === userId
+    
+    if (!isOwner) {
+       return NextResponse.json(
+        { error: "Forbidden: Only owner can delete account" },
+        { status: 403 }
+      )
+    }
 
     await prisma.accounts.update({
       where: {
         id: accountId,
-        family_id: familyId,
       },
       data: {
         deleted_at: new Date(),

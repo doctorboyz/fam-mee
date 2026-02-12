@@ -19,6 +19,7 @@ model accounts {
   last_reconciled_balance                             Decimal?       @db.Decimal(15, 2)
   visibility                                          String?        @default("FAMILY") @db.VarChar(20)
   visible_to_user_ids                                 Json?
+  settings                                            Json?
   is_active                                           Boolean?       @default(true)
   icon                                                String?        @db.VarChar(50)
   color                                               String?        @db.VarChar(20)
@@ -78,9 +79,23 @@ model assets {
   transaction_fees                                  transaction_fees[]
   transactions_transactions_asset_idToassets        transactions[]     @relation("transactions_asset_idToassets")
   transactions_transactions_paired_asset_idToassets transactions[]     @relation("transactions_paired_asset_idToassets")
+  asset_prices                                      asset_prices[]
 
   @@index([asset_type_id], map: "idx_assets_asset_type_id")
   @@index([deleted_at], map: "idx_assets_deleted_at")
+}
+
+model asset_prices {
+  id         BigInt   @id @default(autoincrement())
+  asset_id   BigInt
+  price      Decimal  @db.Decimal(15, 6)
+  currency   String   @default("THB") @db.VarChar(10)
+  source     String?  @db.VarChar(50)
+  timestamp  DateTime @default(now()) @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  assets     assets   @relation(fields: [asset_id], references: [id], onDelete: Cascade)
+
+  @@index([asset_id, timestamp], map: "idx_asset_prices_asset_timestamp")
 }
 
 model categories {
@@ -94,6 +109,7 @@ model categories {
   color            String?        @db.VarChar(20)
   jar_type         String?        @db.VarChar(10)
   is_active        Boolean?       @default(true)
+  budget_limit     Decimal?       @db.Decimal(15, 2)
   sort_order       BigInt?        @default(0)
   created_at       DateTime?      @db.Timestamptz(6)
   updated_at       DateTime?      @db.Timestamptz(6)

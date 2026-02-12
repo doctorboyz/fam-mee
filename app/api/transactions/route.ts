@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { getAccountAccess, canWrite } from "@/lib/permissions"
 
 export async function GET(request: Request) {
   try {
@@ -14,6 +15,7 @@ export async function GET(request: Request) {
     }
 
     const familyId = Number(session.user.familyId)
+    const userId = Number(session.user.id || 0)
     const { searchParams } = new URL(request.url)
     
     // Parse query parameters
@@ -23,6 +25,24 @@ export async function GET(request: Request) {
     const type = searchParams.get('type')
     const limit = searchParams.get('limit')
     const accountId = searchParams.get('account_id')
+
+    // 1. Fetch all accounts to determine access
+    const allAccounts = await prisma.accounts.findMany({
+      where: {
+        family_id: familyId,
+        deleted_at: null,
+      },
+      select: {
+        id: true,
+        owner_user_id: true,
+        visibility: true,
+        visible_to_user_ids: true,
+      }
+    })
+
+    const accessibleAccountIds = allAccounts.filter(acc => {
+      return getAccountAccess(acc, userId) !== 'NONE'
+    }).map(acc => acc.id)
 
     // Build where clause
     interface WhereClause {
@@ -34,12 +54,28 @@ export async function GET(request: Request) {
       }
       category_id?: number
       type?: string
-      OR?: Array<{ from_account_id: number } | { to_account_id: number }>
+      OR?: any[]
+      AND?: any[]
     }
 
     const where: WhereClause = {
       family_id: familyId,
       deleted_at: null,
+      // Ensure we only see transactions where we have access to the accounts involved
+      AND: [
+        {
+          OR: [
+            { from_account_id: null },
+            { from_account_id: { in: accessibleAccountIds } }
+          ]
+        },
+        {
+          OR: [
+            { to_account_id: null },
+            { to_account_id: { in: accessibleAccountIds } }
+          ]
+        }
+      ]
     }
 
     if (fromDate && toDate) {
@@ -57,10 +93,17 @@ export async function GET(request: Request) {
       where.type = type
     }
     
+    // If specific account requested, ensure we have access and filter by it
     if (accountId) {
+      const requestedId = BigInt(accountId)
+      // Check if user has access to this account
+      if (!accessibleAccountIds.includes(requestedId)) {
+        return NextResponse.json([], { status: 200 }) // Return empty if no access
+      }
+
       where.OR = [
-        { from_account_id: Number(accountId) },
-        { to_account_id: Number(accountId) }
+        { from_account_id: requestedId },
+        { to_account_id: requestedId }
       ]
     }
 
@@ -153,6 +196,37 @@ export async function POST(request: Request) {
         { error: "Type must be INCOME or EXPENSE" },
         { status: 400 }
       )
+    }
+
+    // Permission Check: Must have Write access to from_account (and to_account if Transfer)
+    const accountIdsToCheck = [Number(body.from_account_id)]
+    if (body.to_account_id) accountIdsToCheck.push(Number(body.to_account_id))
+
+    const accounts = await prisma.accounts.findMany({
+      where: {
+        id: { in: accountIdsToCheck },
+        family_id: familyId,
+      },
+      select: {
+        id: true,
+        owner_user_id: true,
+        visibility: true,
+        visible_to_user_ids: true,
+      }
+    })
+
+    if (accounts.length !== accountIdsToCheck.length) {
+       return NextResponse.json({ error: "One or more accounts not found" }, { status: 404 })
+    }
+
+    for (const acc of accounts) {
+      const access = getAccountAccess(acc, userId)
+      if (!canWrite(access)) {
+        return NextResponse.json(
+          { error: `You do not have permission to edit account #${acc.id}` },
+          { status: 403 }
+        )
+      }
     }
 
     const newTransaction = await prisma.transactions.create({

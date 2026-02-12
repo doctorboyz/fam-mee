@@ -6,8 +6,10 @@ import { usePathname } from 'next/navigation'
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: '🏠' },
   { href: '/wallet', label: 'Wallet', icon: '💰' },
-  { href: '/transactions', label: 'Transactions', icon: '📝' },
-  { href: '/calendar', label: 'Calendar', icon: '📅' },
+  { href: '/investments', label: 'Invest', icon: '📈' },
+  { href: '/transactions', label: 'Trans', icon: '📝' },
+  { href: '/debt', label: 'Debt', icon: '💸' },
+  { href: '/budget', label: 'Budget', icon: '🐷' },
 ]
 
 export default function BottomNav() {

@@ -15,6 +15,19 @@ interface AccountDetail {
   color?: string | null
   asset_symbol: string
   updated_at: Date
+  visibility?: 'FAMILY' | 'PRIVATE'
+  visible_to_user_ids?: SharedUser[]
+}
+
+interface User {
+  id: number
+  name: string
+  avatar_url?: string
+}
+
+interface SharedUser {
+  userId: number
+  access: 'READ' | 'WRITE'
 }
 
 interface Transaction {
@@ -176,7 +189,46 @@ function EditAccountModal({
   const [name, setName] = useState(account.name)
   const [icon, setIcon] = useState(account.icon || '💰')
   const [color, setColor] = useState(account.color || 'indigo')
+  
+  const [visibility, setVisibility] = useState<'FAMILY' | 'PRIVATE'>(account.visibility || 'FAMILY')
+  const [sharedWith, setSharedWith] = useState<SharedUser[]>(
+    Array.isArray(account.visible_to_user_ids) ? account.visible_to_user_ids : []
+  )
+  const [availableUsers, setAvailableUsers] = useState<User[]>([])
+
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(account.name)
+      setIcon(account.icon || '💰')
+      setColor(account.color || 'indigo')
+      setVisibility(account.visibility || 'FAMILY')
+      setSharedWith(Array.isArray(account.visible_to_user_ids) ? account.visible_to_user_ids : [])
+
+      // Load family members
+      fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAvailableUsers(data)
+        })
+        .catch(console.error)
+    }
+  }, [isOpen, account])
+
+  const toggleShareUser = (userId: number) => {
+    setSharedWith(prev => {
+      const exists = prev.find(p => p.userId === userId)
+      if (exists) {
+        return prev.filter(p => p.userId !== userId)
+      }
+      return [...prev, { userId, access: 'READ' }]
+    })
+  }
+
+  const updateAccess = (userId: number, access: 'READ' | 'WRITE') => {
+    setSharedWith(prev => prev.map(p => p.userId === userId ? { ...p, access } : p))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -185,7 +237,14 @@ function EditAccountModal({
       const res = await fetch(`/api/accounts/${account.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, icon, color, type: account.type }),
+        body: JSON.stringify({ 
+          name, 
+          icon, 
+          color, 
+          type: account.type,
+          visibility,
+          sharedWith: visibility === 'PRIVATE' ? sharedWith : [],
+        }),
       })
       if (res.ok) {
         onSaved()
@@ -202,7 +261,7 @@ function EditAccountModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 animate-slide-up">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold mb-4">แก้ไขบัญชี</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -245,9 +304,75 @@ function EditAccountModal({
               ))}
             </div>
           </div>
+
+          <div className="border-t pt-4">
+             <label className="block text-sm font-medium text-gray-700 mb-2">การมองเห็น</label>
+             <div className="flex gap-3 mb-4">
+               <label className="flex items-center gap-2 cursor-pointer text-sm">
+                 <input 
+                   type="radio" 
+                   name="edit_visibility" 
+                   value="FAMILY" 
+                   checked={visibility === 'FAMILY'}
+                   onChange={() => setVisibility('FAMILY')}
+                   className="text-indigo-600"
+                 />
+                 <span>ทุกคน (Family)</span>
+               </label>
+               <label className="flex items-center gap-2 cursor-pointer text-sm">
+                 <input 
+                   type="radio" 
+                   name="edit_visibility" 
+                   value="PRIVATE" 
+                   checked={visibility === 'PRIVATE'}
+                   onChange={() => setVisibility('PRIVATE')}
+                   className="text-indigo-600"
+                 />
+                 <span>ส่วนตัว (Private)</span>
+               </label>
+             </div>
+
+             {visibility === 'PRIVATE' && (
+               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                 <p className="text-xs text-gray-500 mb-2">แชร์กับใครบ้าง?</p>
+                 <div className="space-y-2 max-h-40 overflow-y-auto">
+                   {availableUsers.map(u => {
+                     const isSelected = sharedWith.some(s => s.userId === u.id)
+                     const permission = sharedWith.find(s => s.userId === u.id)?.access || 'READ'
+
+                     return (
+                       <div key={u.id} className="flex items-center justify-between">
+                         <label className="flex items-center gap-2 text-sm">
+                           <input 
+                             type="checkbox" 
+                             checked={isSelected}
+                             onChange={() => toggleShareUser(u.id)}
+                             className="rounded text-indigo-600"
+                           />
+                           {u.name}
+                         </label>
+                         
+                         {isSelected && (
+                           <select 
+                             value={permission}
+                             onChange={(e) => updateAccess(u.id, e.target.value as any)}
+                             className="text-xs border rounded px-1 py-0.5"
+                           >
+                             <option value="READ">View Only</option>
+                             <option value="WRITE">Can Edit</option>
+                           </select>
+                         )}
+                       </div>
+                     )
+                   })}
+                 </div>
+               </div>
+             )}
+          </div>
+
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 text-gray-500">ยกเลิก</button>
-            <button type="submit" disabled={saving} className="flex-1 bg-indigo-600 text-white rounded-xl py-2">บันทึก</button>
+            <button type="button" onClick={onClose} className="flex-1 text-gray-500 text-sm">ยกเลิก</button>
+            <button type="submit" disabled={saving} className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm">บันทึก</button>
           </div>
         </form>
       </div>
