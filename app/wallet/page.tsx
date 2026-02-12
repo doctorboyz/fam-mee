@@ -306,61 +306,37 @@ function AccountModal({
           <div className="border-t pt-4">
              <label className="block text-sm font-medium text-gray-700 mb-2">การมองเห็น (Visibility)</label>
              <div className="flex flex-col gap-2 mb-4">
-               <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                 <input 
-                   type="radio" 
-                   name="visibility" 
-                   value="FAMILY" 
-                   checked={uiVisibility === 'FAMILY'}
-                   onChange={() => {
-                     setUiVisibility('FAMILY')
+               <select
+                 value={uiVisibility}
+                 onChange={(e) => {
+                   const value = e.target.value as 'FAMILY' | 'PRIVATE' | 'SELECTED'
+                   setUiVisibility(value)
+                   if (value === 'FAMILY') {
                      setVisibility('FAMILY')
-                     setSharedWith([]) // Reset shared users
-                   }}
-                   className="text-indigo-600 focus:ring-indigo-500"
-                 />
-                 <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">ทุกคนในบ้าน (Family)</span>
-                    <span className="text-xs text-gray-500">สมาชิกทุกคนในครอบครัวสามารถมองเห็นได้</span>
-                 </div>
-               </label>
+                     setSharedWith([])
+                   } else if (value === 'PRIVATE') {
+                     setVisibility('PRIVATE')
+                     setSharedWith([])
+                   } else if (value === 'SELECTED') {
+                     setVisibility('PRIVATE')
+                   }
+                 }}
+                 className="w-full px-4 py-2 border rounded-xl bg-white"
+               >
+                 <option value="FAMILY">ทุกคนในบ้าน (Family)</option>
+                 <option value="PRIVATE">ส่วนตัว (Private - Only Me)</option>
+                 <option value="SELECTED">เลือกคนที่จะให้เห็น (Selected Members)</option>
+               </select>
                
-               <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                 <input 
-                   type="radio" 
-                   name="visibility" 
-                   value="PRIVATE" 
-                   checked={uiVisibility === 'PRIVATE'}
-                   onChange={() => {
-                      setUiVisibility('PRIVATE')
-                      setVisibility('PRIVATE')
-                      setSharedWith([]) // Clear shared users for true Private
-                   }}
-                   className="text-indigo-600 focus:ring-indigo-500"
-                 />
-                 <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">ส่วนตัว (Private - Only Me)</span>
-                    <span className="text-xs text-gray-500">เห็นได้เฉพาะฉันคนเดียว</span>
-                 </div>
-               </label>
-
-               <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                 <input 
-                   type="radio" 
-                   name="visibility" 
-                   value="SELECTED" 
-                   checked={uiVisibility === 'SELECTED'}
-                   onChange={() => {
-                      setUiVisibility('SELECTED')
-                      setVisibility('PRIVATE') // Backend still sees 'PRIVATE'
-                   }}
-                   className="text-indigo-600 focus:ring-indigo-500"
-                 />
-                 <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">เลือกคนที่จะให้เห็น (Selected Members)</span>
-                    <span className="text-xs text-gray-500">ฉันและสมาชิกที่เลือกเท่านั้นที่เห็น</span>
-                 </div>
-               </label>
+               {uiVisibility === 'FAMILY' && (
+                 <p className="text-xs text-gray-500 ml-1">สมาชิกทุกคนในครอบครัวสามารถมองเห็นได้</p>
+               )}
+               {uiVisibility === 'PRIVATE' && (
+                 <p className="text-xs text-gray-500 ml-1">เห็นได้เฉพาะฉันคนเดียว</p>
+               )}
+               {uiVisibility === 'SELECTED' && (
+                 <p className="text-xs text-gray-500 ml-1">ฉันและสมาชิกที่เลือกเท่านั้นที่เห็น</p>
+               )}
              </div>
 
              {uiVisibility === 'SELECTED' && (

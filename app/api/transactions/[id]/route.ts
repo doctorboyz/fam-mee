@@ -125,15 +125,30 @@ export async function PUT(
       )
     }
 
+    // Determine Final State (Merge existing with updates)
+    const finalType = body.type || existing.type
+    const finalAmount = body.amount !== undefined ? Number(body.amount) : Number(existing.actual_amount)
+    const finalFromId = body.from_account_id ? Number(body.from_account_id) : Number(existing.from_account_id)
+    const finalToId = body.to_account_id !== undefined 
+                      ? (body.to_account_id ? Number(body.to_account_id) : null) 
+                      : (existing.to_account_id ? Number(existing.to_account_id) : null)
+
+    // Validations
+    if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(finalType)) {
+        return NextResponse.json({ error: "Invalid type" }, { status: 400 })
+    }
+    if (finalType === 'TRANSFER' && !finalToId) {
+        return NextResponse.json({ error: "Transfer requires to_account_id" }, { status: 400 })
+    }
+
     // Identify all accounts needing Write permission
-    // 1. Accounts currently involved (because their balance might change or we are removing tx from them)
     const accountIdsToCheck = new Set<number>()
+    // Old accounts
     if (existing.from_account_id) accountIdsToCheck.add(Number(existing.from_account_id))
     if (existing.to_account_id) accountIdsToCheck.add(Number(existing.to_account_id))
-
-    // 2. New accounts involved (if changing)
-    if (body.from_account_id) accountIdsToCheck.add(Number(body.from_account_id))
-    if (body.to_account_id) accountIdsToCheck.add(Number(body.to_account_id))
+    // New accounts
+    accountIdsToCheck.add(finalFromId)
+    if (finalToId) accountIdsToCheck.add(finalToId)
 
     if (accountIdsToCheck.size > 0) {
       const accounts = await prisma.accounts.findMany({
@@ -175,21 +190,67 @@ export async function PUT(
     if (body.project_id !== undefined) updateData.project_id = body.project_id ? Number(body.project_id) : null
     if (body.transaction_date) updateData.transaction_date = new Date(body.transaction_date)
 
-    const updated = await prisma.transactions.update({
-      where: {
-        id: transactionId,
-      },
-      data: updateData,
-      include: {
-        categories: true,
-        accounts_transactions_from_account_idToaccounts: true,
-        users_transactions_created_by_user_idTousers: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+        // 1. Revert Old Balance
+        const oldAmount = Number(existing.actual_amount || 0)
+        
+        if (existing.type === 'EXPENSE' && existing.from_account_id) {
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { increment: oldAmount } }
+            })
+        } else if (existing.type === 'INCOME' && existing.from_account_id) {
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { decrement: oldAmount } }
+            })
+        } else if (existing.type === 'TRANSFER' && existing.from_account_id && existing.to_account_id) {
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { increment: oldAmount } }
+            })
+            await tx.accounts.update({
+                where: { id: existing.to_account_id },
+                data: { current_balance: { decrement: oldAmount } }
+            })
+        }
+
+        // 2. Update Transaction
+        const txUpdated = await tx.transactions.update({
+            where: { id: transactionId },
+            data: updateData,
+            include: {
+                categories: true,
+                accounts_transactions_from_account_idToaccounts: true,
+                users_transactions_created_by_user_idTousers: {
+                    select: { id: true, name: true },
+                },
+            },
+        })
+
+        // 3. Apply New Balance
+        if (finalType === 'EXPENSE') {
+            await tx.accounts.update({
+                where: { id: BigInt(finalFromId) },
+                data: { current_balance: { decrement: finalAmount } }
+            })
+        } else if (finalType === 'INCOME') {
+            await tx.accounts.update({
+                where: { id: BigInt(finalFromId) },
+                data: { current_balance: { increment: finalAmount } }
+            })
+        } else if (finalType === 'TRANSFER' && finalToId) {
+            await tx.accounts.update({
+                where: { id: BigInt(finalFromId) },
+                data: { current_balance: { decrement: finalAmount } }
+            })
+            await tx.accounts.update({
+                where: { id: BigInt(finalToId) },
+                data: { current_balance: { increment: finalAmount } }
+            })
+        }
+
+        return txUpdated
     })
 
     return NextResponse.json({
@@ -262,14 +323,44 @@ export async function DELETE(
       }
     }
 
-    // Soft delete
-    await prisma.transactions.update({
-      where: {
-        id: transactionId,
-      },
-      data: {
-        deleted_at: new Date(),
-      },
+    await prisma.$transaction(async (tx) => {
+        // Revert Balance
+        const amount = Number(existing.actual_amount || 0)
+        
+        if (existing.type === 'EXPENSE' && existing.from_account_id) {
+            // Was Expense (decreased balance), so Increment back
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { increment: amount } }
+            })
+        } else if (existing.type === 'INCOME' && existing.from_account_id) {
+            // Was Income (increased balance), so Decrement back
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { decrement: amount } }
+            })
+        } else if (existing.type === 'TRANSFER' && existing.from_account_id && existing.to_account_id) {
+            // Was Transfer (from - amount, to + amount)
+            // Revert: from + amount, to - amount
+            await tx.accounts.update({
+                where: { id: existing.from_account_id },
+                data: { current_balance: { increment: amount } }
+            })
+            await tx.accounts.update({
+                where: { id: existing.to_account_id },
+                data: { current_balance: { decrement: amount } }
+            })
+        }
+
+        // Soft delete
+        await tx.transactions.update({
+            where: {
+                id: transactionId,
+            },
+            data: {
+                deleted_at: new Date(),
+            },
+        })
     })
 
     return NextResponse.json({ success: true })

@@ -191,9 +191,9 @@ export async function POST(request: Request) {
     }
 
     // Validate type
-    if (body.type !== 'INCOME' && body.type !== 'EXPENSE') {
+    if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(body.type)) {
       return NextResponse.json(
-        { error: "Type must be INCOME or EXPENSE" },
+        { error: "Type must be INCOME, EXPENSE, or TRANSFER" },
         { status: 400 }
       )
     }
@@ -212,6 +212,7 @@ export async function POST(request: Request) {
         owner_user_id: true,
         visibility: true,
         visible_to_user_ids: true,
+        current_balance: true,
       }
     })
 
@@ -229,36 +230,88 @@ export async function POST(request: Request) {
       }
     }
 
-    const newTransaction = await prisma.transactions.create({
-      data: {
-        family_id: familyId,
-        created_by_user_id: userId,
-        type: body.type,
-        actual_amount: body.amount,
-        description: body.description || '',
-        category_id: body.category_id ? Number(body.category_id) : null,
-        from_account_id: Number(body.from_account_id),
-        to_account_id: body.to_account_id ? Number(body.to_account_id) : null,
-        project_id: body.project_id ? Number(body.project_id) : null,
-        asset_id: Number(body.asset_id),
-        transaction_date: body.transaction_date ? new Date(body.transaction_date) : new Date(),
-      },
-      include: {
-        categories: true,
-        accounts_transactions_from_account_idToaccounts: true,
-        users_transactions_created_by_user_idTousers: {
-          select: {
-            id: true,
-            name: true,
+    // Use transaction to ensure data integrity
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create Transaction
+      const newTransaction = await tx.transactions.create({
+        data: {
+          family_id: familyId,
+          created_by_user_id: userId,
+          type: body.type,
+          actual_amount: body.amount,
+          description: body.description || '',
+          category_id: body.category_id ? Number(body.category_id) : null,
+          from_account_id: Number(body.from_account_id),
+          to_account_id: body.to_account_id ? Number(body.to_account_id) : null,
+          project_id: body.project_id ? Number(body.project_id) : null,
+          asset_id: Number(body.asset_id),
+          transaction_date: body.transaction_date ? new Date(body.transaction_date) : new Date(),
+        },
+        include: {
+          categories: true,
+          accounts_transactions_from_account_idToaccounts: true,
+          users_transactions_created_by_user_idTousers: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
+      })
+
+      // 2. Update Balances
+      const amount = Number(body.amount)
+      
+      if (body.type === 'EXPENSE') {
+        // Decrease from_account
+        await tx.accounts.update({
+          where: { id: BigInt(body.from_account_id) },
+          data: {
+            current_balance: {
+              decrement: amount
+            }
+          }
+        })
+      } else if (body.type === 'INCOME') {
+        // Increase from_account
+        await tx.accounts.update({
+          where: { id: BigInt(body.from_account_id) },
+          data: {
+            current_balance: {
+              increment: amount
+            }
+          }
+        })
+      } else if (body.type === 'TRANSFER') {
+        // Decrease from_account, Increase to_account
+        if (!body.to_account_id) throw new Error("to_account_id required for TRANSFER")
+        
+        await tx.accounts.update({
+          where: { id: BigInt(body.from_account_id) },
+          data: {
+            current_balance: {
+              decrement: amount
+            }
+          }
+        })
+
+        await tx.accounts.update({
+          where: { id: BigInt(body.to_account_id) },
+          data: {
+            current_balance: {
+              increment: amount
+            }
+          }
+        })
+      }
+
+      return newTransaction
     })
 
     return NextResponse.json(
       {
-        ...newTransaction,
-        amount: Number(newTransaction.actual_amount) || 0,
+        ...result,
+        amount: Number(result.actual_amount) || 0,
       },
       { status: 201 }
     )
