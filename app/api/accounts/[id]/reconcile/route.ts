@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 
 export async function POST(
   request: Request,
@@ -70,7 +71,7 @@ export async function POST(
     // Find or create 'Adjustment' category? For now, let's leave category null or handle it visually.
     // Ideally we should have a system category for adjustments.
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Create transaction
       await tx.transactions.create({
         data: {
@@ -84,18 +85,6 @@ export async function POST(
 
           // Since it's an adjustment, if it's income to this account, to_account_id is this account.
           // If expense from this account, from_account_id is this account.
-          // Wait, 'from_account_id' is required for EXPENSE? 
-          // Let's check schema. from_account_id is NOT required in schema?
-          // transactions.from_account_id is BigInt? (Optional) in schema?
-          // Checking schema... from_account_id is BigInt (Nullable? No, line 298: from_account_id BigInt?)
-          // Wait, I recall viewing schema lines 237-321.
-          // Let's assume nullable based on logic (INCOME usually has no from_account for external income).
-          // Actually, for INCOME, usually from_account is null, to_account is the account receiving.
-          // For EXPENSE, from_account is the account paying, to_account is null.
-          
-          // Re-checking standard logic:
-          // INCOME: to_account_id = accountId
-          // EXPENSE: from_account_id = accountId
           
           from_account_id: type === "EXPENSE" ? accountId : null,
           to_account_id: type === "INCOME" ? accountId : null,

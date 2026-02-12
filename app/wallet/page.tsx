@@ -44,7 +44,7 @@ function AccountModal({
 }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('CASH')
-  const [assetId, setAssetId] = useState('1') // Default to THB (ID 1)
+  const [assetId, setAssetId] = useState('') // Will be set by useEffect using available assets
   const [balance, setBalance] = useState('')
   const [icon, setIcon] = useState('💰')
   const [color, setColor] = useState('indigo')
@@ -77,10 +77,16 @@ function AccountModal({
       fetch('/api/assets')
         .then(res => res.json())
         .then(data => {
-          if (Array.isArray(data)) {
+          if (Array.isArray(data) && data.length > 0) {
             setAvailableAssets(data)
-            // If we have data but no asset selected, default to first FIAT or first asset
-            // Assuming ID 1 is THB/Fiat is handled by seed or default
+            // Default to the first asset if no valid asset is selected
+             setAssetId(prev => {
+                // If we already have a set assetId, check if it exists in the new data
+                const exists = data.find((a: Asset) => String(a.id) === prev)
+                if (exists) return prev
+                // Otherwise default to the first one
+                return String(data[0].id)
+             })
           }
         })
         .catch(console.error)
@@ -106,11 +112,15 @@ function AccountModal({
     setSaving(true)
     setError('')
 
-    // Determine final asset ID. Use selected if INVESTMENT, otherwise 1 (THB)
-    // Note: If type is 'BANK', it's also usually THB.
-    // If user wants a Multi-currency wallet (USD Bank Account), they might select 'BANK' and 'USD'.
-    // So let's allow asset selection for all types, but default to 'THB' if not selected.
-    const finalAssetId = assetId ? Number(assetId) : 1
+    // Determine final asset ID. Use selected if INVESTMENT, otherwise default to first available
+    let finalAssetId = assetId ? Number(assetId) : 0
+    
+    if (finalAssetId === 0 && availableAssets.length > 0) {
+        finalAssetId = Number(availableAssets[0].id)
+    }
+
+    // Fallback to 1 only if absolutely nothing else (though this might still fail FK if 1 doesn't exist)
+    if (finalAssetId === 0) finalAssetId = 1
 
     try {
       const res = await fetch('/api/accounts', {
@@ -138,7 +148,7 @@ function AccountModal({
 
       onSaved()
       onClose()
-    } catch (err) {
+    } catch {
       setError('Failed to create account')
     } finally {
       setSaving(false)
@@ -386,7 +396,7 @@ function AccountModal({
                          {isSelected && (
                            <select 
                              value={permission}
-                             onChange={(e) => updateAccess(u.id, e.target.value as any)}
+                             onChange={(e) => updateAccess(u.id, e.target.value as 'READ' | 'WRITE')}
                              className="text-xs border-gray-200 rounded-md px-2 py-1 bg-gray-50 text-gray-600 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                            >
                              <option value="READ">View Only</option>
@@ -440,6 +450,7 @@ export default function WalletPage() {
   const router = useRouter()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'all' | 'cash' | 'bank'>('all')
   const [showAccountModal, setShowAccountModal] = useState(false)
