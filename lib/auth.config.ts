@@ -3,7 +3,7 @@ export const authConfig = {
     signIn: '/login',
   },
   callbacks: {
-    authorized({ auth, request: { nextUrl } }) {
+    authorized({ auth, request: { nextUrl } }: { auth: any; request: { nextUrl: any } }) {
       const isLoggedIn = !!auth?.user
       const isOnDashboard = nextUrl.pathname.startsWith('/dashboard')
       if (isOnDashboard) {
@@ -14,7 +14,7 @@ export const authConfig = {
       }
       return true
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any; user: any }) {
       if (user) {
         token.id = user.id
         token.username = (user as any).username
@@ -24,7 +24,7 @@ export const authConfig = {
       }
       return token
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (token && session.user) {
         session.user.id = token.id as string
         session.user.username = (token.username as string) || ''
