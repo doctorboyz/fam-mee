@@ -30,8 +30,27 @@ docker run -p 3000:3000 \
   fam-mee
 ```
 
-## 3. Database (Supabase)
+## 3. Database Connection
 
-1.  Go to your Supabase project settings.
-2.  Get the connection string from **Database** -> **Connection string** -> **Node.js**.
-3.  Use this string as the `DATABASE_URL` environment variable.
+### Local Development
+
+- **Configuration**: Uses `.env` (default/production) and `.env.local` (local overrides).
+- **Connection String**: `DATABASE_URL="postgresql://[user]:[password]@[host]:[port]/[db]"`
+- **Prisma Config**: `prisma.config.ts` is configured to load `.env` first, then override with `.env.local`.
+- **Recommendation**: Use `.env.local` for your local database credentials to avoid committing them.
+- **Troubleshooting**:
+  - Ensure `.env.local` does NOT contain a conflicting `DATABASE_URL` (especially one with placeholders).
+  - Run `npx prisma db push` to sync schema changes.
+
+### Vercel Deployment
+
+- **Configuration**: Uses Environment Variables set in Vercel Project Settings.
+- **Connection String**: Same format as local, pointing to your Supabase instance.
+  - Ensure you check "Automatically expose System Environment Variables" or manually add `DATABASE_URL`.
+- **Build**: Vercel automatically runs `prisma generate` during build (defined in `package.json` postinstall).
+
+### Supabase Details
+
+- **Host**: `aws-0-ap-southeast-1.pooler.supabase.com` (Example)
+- **Port**: `6543` (Transaction Pooler - Recommended for Serverless/Edge) or `5432` (Direct).
+- **Mode**: `Transaction` mode is recommended for Next.js deployed on Vercel.
